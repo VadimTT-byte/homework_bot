@@ -1,4 +1,6 @@
-import os, sys
+import os
+
+import sys
 
 import exceptions
 
@@ -8,8 +10,8 @@ import logging
 
 import requests
 
-from telegram.ext import Updater, CommandHandler
-from telegram import ReplyKeyboardMarkup, Bot
+from telegram.ext import Updater
+from telegram import Bot
 
 from dotenv import load_dotenv
 
@@ -44,7 +46,9 @@ logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(sys.stdout)
 logger.addHandler(handler)
 
+
 def send_message(bot, message):
+    """Отправляет сообщение."""
     try:
         bot.send_message(
             chat_id=TELEGRAM_CHAT_ID,
@@ -54,30 +58,34 @@ def send_message(bot, message):
     except Exception as error:
         logger.error(f'Произошла ошибка: {error}')
 
+
 def get_api_answer(current_timestamp):
-    """Получаем ответ от API"""
+    """Получаем ответ от API."""
     timestamp = current_timestamp or int(time.time())
     params = {'from_date': timestamp}
-    
+
     try:
-        homework_response = requests.get(ENDPOINT, headers=HEADERS,params=params)
+        homework_response = requests.get(
+            ENDPOINT,
+            headers=HEADERS,
+            params=params)
         STATUS_CODE = homework_response.status_code
         logger.info(f'Status code: {STATUS_CODE}')
     except Exception as error:
         logger.exception(f'Ошибка при запросе к API: {error}')
     if STATUS_CODE != HTTPStatus.OK:
-            raise exceptions.ResponseNotEqualOK(
-                f'Ответ API не равен 200'
-            )
+        raise exceptions.ResponseNotEqualOK(
+            f'Ответ API не равен 200 {STATUS_CODE}'
+        )
     logger.info('Ответ от API получен! OK!')
     return homework_response.json()
 
-def check_response(response):
-    """Проверка API response на корректность"""
 
+def check_response(response):
+    """Проверка API response на корректность."""
     if not isinstance(response, dict):
         raise TypeError('Ответ API не является словарем')
-    
+
     homeworks = response.get('homeworks')
 
     if not isinstance(homeworks, list):
@@ -90,11 +98,12 @@ def check_response(response):
 
 
 def parse_status(homework):
+    """Информация о конкретной домашней работе и статус этой работы."""
     try:
         homework_name = homework.get('homework_name')
         homework_status = homework.get('status')
     except Exception as error:
-        logger.error('Не удалось получить статус работы')
+        logger.error(f'Не удалось получить статус работы {error}')
         raise KeyError
     if homework_status in HOMEWORK_STATUSES:
         verdict = HOMEWORK_STATUSES[homework_status]
@@ -105,12 +114,14 @@ def parse_status(homework):
 
 
 def check_tokens():
-    """Проверяет доступность переменных окружения"""
+    """Проверяет доступность переменных окружения."""
     try:
         if all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]):
             return True
-    except Exception as critical:
-        logger.critical(f'Отсутствуют обязательные переменные окружения: {critical}')
+    except Exception as error:
+        logger.critical(
+            f'Отсутствуют обязательные переменные окружения: {error}'
+        )
     return False
 
 
@@ -128,17 +139,17 @@ def main():
         update.start_polling()
     except Exception as error:
         logger.exception(f'Соединение разорвано {error}')
-    
-    flag_errors = True
 
+    flag_errors = True
+    temp_status = 'reviewing'
     while True:
         try:
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
-            if homeworks and tmp_status != homeworks['status']:
+            if homeworks and temp_status != homeworks['status']:
                 message = parse_status(homeworks)
                 send_message(bot, message)
-                tmp_status = homeworks['status']
+                temp_status = homeworks['status']
 
             current_timestamp = int(time.time())
 
