@@ -120,9 +120,6 @@ def find_tokens_or_exit():
         sys.exit()
 
 
-def check_flag_error(flag_error):
-    pass
-
 # flake8: noqa: C901
 def main():
     """Основная логика работы бота."""
