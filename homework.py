@@ -1,20 +1,13 @@
 import os
-
 import sys
-
 import exceptions
-
 import time
-
 import logging
-
+import logger_config
 import requests
-
 from telegram.ext import Updater
 from telegram import Bot
-
 from dotenv import load_dotenv
-
 from http import HTTPStatus
 
 load_dotenv()
@@ -34,13 +27,7 @@ HOMEWORK_STATUSES = {
     'rejected': 'Работа проверена: у ревьюера есть замечания.'
 }
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    filename='homework_bot.log',
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    filemode='w'
-)
-
+logger_config
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler(sys.stdout)
@@ -54,9 +41,12 @@ def send_message(bot, message):
             chat_id=TELEGRAM_CHAT_ID,
             text=message
         )
-        logger.info(f'Сообщение {message[:15]}... отправлено')
     except Exception as error:
-        logger.error(f'Произошла ошибка: {error}')
+        raise exceptions.MessageNotSendError(
+            f'Не удалось отправить сообщение :( ошибка - {error}'
+        )
+    else:
+        logger.info(f'Сообщение {message[:15]}... отправлено')
 
 
 def get_api_answer(current_timestamp):
@@ -71,8 +61,13 @@ def get_api_answer(current_timestamp):
             params=params)
         STATUS_CODE = homework_response.status_code
         logger.info(f'Status code: {STATUS_CODE}')
+        logger.info(
+            f'Параметры params={params}, headers={HEADERS}'
+        )
     except Exception as error:
-        logger.exception(f'Ошибка при запросе к API: {error}')
+        raise exceptions.RequestError(
+            f'Ошибка при запросе к API: {error}'
+        )
     if STATUS_CODE != HTTPStatus.OK:
         raise exceptions.ResponseNotEqualOK(
             f'Ответ API не равен 200 {STATUS_CODE}'
@@ -100,37 +95,34 @@ def check_response(response):
 def parse_status(homework):
     """Информация о конкретной домашней работе и статус этой работы."""
     try:
-        homework_name = homework.get('homework_name')
-        homework_status = homework.get('status')
+        homework_name = homework['homework_name']
+        homework_status = homework['status']
     except Exception as error:
-        logger.error(f'Не удалось получить статус работы {error}')
-        raise KeyError
+        raise KeyError(f'Не найден ключ - {error}')
     if homework_status in HOMEWORK_STATUSES:
         verdict = HOMEWORK_STATUSES[homework_status]
     else:
-        logger.error('Незадокументированный статус домашней работы')
-        raise KeyError(f'Неизвестный статус {homework_status}')
+        raise exceptions.UnregisteredStatus(
+            f'Неизвестный статус {homework_status}'
+        )
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
 def check_tokens():
     """Проверяет доступность переменных окружения."""
-    try:
-        if all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID]):
-            return True
-    except Exception as error:
-        logger.critical(
-            f'Отсутствуют обязательные переменные окружения: {error}'
-        )
-    return False
+    return all([PRACTICUM_TOKEN, TELEGRAM_TOKEN, TELEGRAM_CHAT_ID])
 
 
-def main():
-    """Основная логика работы бота."""
+def find_tokens_or_exit():
+    """Проверка проверки токенов."""
     if not check_tokens():
         logger.critical('Не найдены токены! Программа остановлена')
         sys.exit()
 
+
+def main():
+    """Основная логика работы бота."""
+    find_tokens_or_exit()
     logger.info('Токены загружены')
     try:
         current_timestamp = int(time.time())
@@ -149,13 +141,22 @@ def main():
             if homeworks and temp_status != homeworks['status']:
                 message = parse_status(homeworks)
                 send_message(bot, message)
+                logger.info('Сообщение отправлено')
                 temp_status = homeworks['status']
-
             current_timestamp = int(time.time())
 
-            logger.info('Новых изменений нет...Время ожидания 10 мин.')
-            time.sleep(RETRY_TIME)
-
+        except KeyError as error:
+            logger.error(f'Не удалось получить статус работы {error}')
+        except exceptions.UnregisteredStatus as error:
+            logger.error(
+                f'Незадокументированный статус домашней работы {error}'
+            )
+        except exceptions.RequestError as error:
+            logger.exception(f'Ошибка при запросе к API: {error}')
+        except exceptions.MessageNotSendError as error:
+            logger.exception(
+                f'Не удалось отправить сообщение :( ошибка - {error}'
+            )
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
 
@@ -165,6 +166,9 @@ def main():
             else:
                 logger.critical(message)
                 time.sleep(RETRY_TIME)
+        finally:
+            logger.info('Новых изменений нет...Время ожидания 10 мин.')
+            time.sleep(RETRY_TIME)
 
 
 if __name__ == '__main__':
