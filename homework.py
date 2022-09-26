@@ -97,14 +97,18 @@ def parse_status(homework):
     try:
         homework_name = homework['homework_name']
         homework_status = homework['status']
+        if homework_status not in HOMEWORK_STATUSES:
+            raise exceptions.UnregisteredStatus(
+                f'Неизвестный статус {homework_status}'
+            )
+    except exceptions.UnregisteredStatus as error:
+        logger.error(
+            f'Незадокументированный статус домашней работы {error}'
+        )
     except Exception as error:
         raise KeyError(f'Не найден ключ - {error}')
-    if homework_status in HOMEWORK_STATUSES:
-        verdict = HOMEWORK_STATUSES[homework_status]
-    else:
-        raise exceptions.UnregisteredStatus(
-            f'Неизвестный статус {homework_status}'
-        )
+
+    verdict = HOMEWORK_STATUSES[homework_status]
     return f'Изменился статус проверки работы "{homework_name}". {verdict}'
 
 
@@ -120,7 +124,6 @@ def find_tokens_or_exit():
         sys.exit()
 
 
-# flake8: noqa: C901
 def main():
     """Основная логика работы бота."""
     find_tokens_or_exit()
@@ -133,7 +136,6 @@ def main():
     except Exception as error:
         logger.exception(f'Соединение разорвано {error}')
 
-    flag_errors = True
     temp_status = 'reviewing'
     while True:
         try:
@@ -148,10 +150,6 @@ def main():
 
         except KeyError as error:
             logger.error(f'Не удалось получить статус работы {error}')
-        except exceptions.UnregisteredStatus as error:
-            logger.error(
-                f'Незадокументированный статус домашней работы {error}'
-            )
         except exceptions.RequestError as error:
             logger.exception(f'Ошибка при запросе к API: {error}')
         except exceptions.MessageNotSendError as error:
@@ -160,10 +158,8 @@ def main():
             )
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-            if flag_errors:
-                flag_errors = False
-                send_message(bot, message)
             logger.critical(message)
+            send_message(bot, message)
         finally:
             logger.info('Новых изменений нет...Время ожидания 10 мин.')
             time.sleep(RETRY_TIME)
