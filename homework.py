@@ -120,6 +120,10 @@ def find_tokens_or_exit():
         sys.exit()
 
 
+def check_flag_error(flag_error):
+    pass
+
+# flake8: noqa: C901
 def main():
     """Основная логика работы бота."""
     find_tokens_or_exit()
@@ -159,13 +163,10 @@ def main():
             )
         except Exception as error:
             message = f'Сбой в работе программы: {error}'
-
             if flag_errors:
                 flag_errors = False
                 send_message(bot, message)
-            else:
-                logger.critical(message)
-                time.sleep(RETRY_TIME)
+            logger.critical(message)
         finally:
             logger.info('Новых изменений нет...Время ожидания 10 мин.')
             time.sleep(RETRY_TIME)
