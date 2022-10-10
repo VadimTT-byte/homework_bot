@@ -46,7 +46,7 @@ def send_message(bot, message):
             f'Не удалось отправить сообщение :( ошибка - {error}'
         )
     else:
-        logger.info(f'Сообщение {message[:15]}... отправлено')
+        logger.info(f'Сообщение {message}... отправлено')
 
 
 def get_api_answer(current_timestamp):
@@ -142,7 +142,7 @@ def main():
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
             if homeworks and temp_status != homeworks['status']:
-                message = parse_status(homeworks)
+                message = parse_status(homeworks[0])
                 send_message(bot, message)
                 logger.info('Сообщение отправлено')
                 temp_status = homeworks['status']
