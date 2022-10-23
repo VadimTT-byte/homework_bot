@@ -16,7 +16,8 @@ PRACTICUM_TOKEN = os.getenv('PRACTICUM_TOKEN')
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
-RETRY_TIME = 600
+RETRY_TIME = 600 # 600
+WEEK_IN_SEC = 604800
 ENDPOINT = 'https://practicum.yandex.ru/api/user_api/homework_statuses/'
 HEADERS = {'Authorization': f'OAuth {PRACTICUM_TOKEN}'}
 
@@ -51,7 +52,7 @@ def send_message(bot, message):
 
 def get_api_answer(current_timestamp):
     """Получаем ответ от API."""
-    timestamp = current_timestamp or int(time.time())
+    timestamp = current_timestamp
     params = {'from_date': timestamp}
 
     try:
@@ -82,12 +83,12 @@ def check_response(response):
         raise TypeError('Ответ API не является словарем')
 
     homeworks = response.get('homeworks')
-
+    logger.info(f'{homeworks} - возвращает функция {check_response.__name__}')
     if not isinstance(homeworks, list):
         raise TypeError('Список работ не является списком')
 
     if len(homeworks) == 0:
-        logger.debug('Нет новых статусов.')
+        logger.info('Нет новых статусов.')
 
     return homeworks
 
@@ -96,7 +97,9 @@ def parse_status(homework):
     """Информация о конкретной домашней работе и статус этой работы."""
     try:
         homework_name = homework['homework_name']
+        logger.info(f"Было получено имя дом.работы {homework_name}")
         homework_status = homework['status']
+        logger.info(f"Был получено статус дом.работы {homework_status}")
         if homework_status not in HOMEWORK_STATUSES:
             raise exceptions.UnregisteredStatus(
                 f'Неизвестный статус {homework_status}'
@@ -109,7 +112,7 @@ def parse_status(homework):
         raise KeyError(f'Не найден ключ - {error}')
 
     verdict = HOMEWORK_STATUSES[homework_status]
-    return f'Изменился статус проверки работы "{homework_name}". {verdict}'
+    return f'Изменился статус проверки работы "{homework_name}".{verdict}'
 
 
 def check_tokens():
@@ -129,25 +132,23 @@ def main():
     find_tokens_or_exit()
     logger.info('Токены загружены')
     try:
-        current_timestamp = int(time.time())
+        current_timestamp = int(time.time()) - WEEK_IN_SEC
         bot = Bot(token=TELEGRAM_TOKEN)
         update = Updater(token=TELEGRAM_TOKEN)
         update.start_polling()
     except Exception as error:
         logger.exception(f'Соединение разорвано {error}')
 
-    temp_status = 'reviewing'
+
     while True:
         try:
             response = get_api_answer(current_timestamp)
             homeworks = check_response(response)
-            if homeworks and temp_status != homeworks['status']:
+            if homeworks:
                 message = parse_status(homeworks[0])
                 send_message(bot, message)
                 logger.info('Сообщение отправлено')
-                temp_status = homeworks['status']
-            current_timestamp = int(time.time())
-
+            current_timestamp = int(time.time()) - RETRY_TIME
         except KeyError as error:
             logger.error(f'Не удалось получить статус работы {error}')
         except exceptions.RequestError as error:
